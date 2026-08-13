@@ -4,7 +4,8 @@
 # テキスト・画像・音声・動画ファイルを統合したマルチモーダルなチャットボットU
 # 
 #   
-#  
+#  auth=("joekajio90", "Soejima/2874")
+#
 import os
 import sys
 import datetime
@@ -12,8 +13,8 @@ import gradio as gr
 from google import genai
 from PIL import Image
 
-# アプリのバージョンとデータベース状態（固定値）
-APP_VERSION = "v1.2.1"
+# アプリのバージョンとデータベース状態
+APP_VERSION = "v1.2.2"
 DB_STATUS = "Connected (SQLite)"
 START_TIME = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
@@ -21,26 +22,8 @@ START_TIME = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 client = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
 
-def find_fast_gemini_model():
-    if not client:
-        return 'gemini-2.0-flash'
-    # 実在する利用可能なモデルのリスト
-    candidates = [
-        'gemini-2.0-flash',
-        'gemini-1.5-flash'
-    ]
-    for model_name in candidates:
-        try:
-            client.models.generate_content(
-                model=model_name,
-                contents="test"
-            )
-            return model_name
-        except Exception:
-            continue
-    return 'gemini-2.0-flash'
-
-FAST_MODEL_NAME = find_fast_gemini_model()
+# 確実に利用可能なモデル名を指定
+FAST_MODEL_NAME = "gemini-1.5-flash"
 
 # タイトル下に表示するシステム情報ヘッダー
 SYSTEM_INFO_HTML = f"""
@@ -56,7 +39,7 @@ SYSTEM_INFO_HTML = f"""
 
 def respond(message, history):
     if not client:
-        return "APIキーが設定されていません。"
+        return "APIキーが設定されていません。RenderのEnvironment VariablesでGEMINI_API_KEYを設定してください。"
 
     now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     text_input = message.get("text", "")
@@ -87,14 +70,21 @@ def respond(message, history):
     if not contents:
         return "メッセージ、画像、または音声を入力してください。"
 
-    try:
-        response = client.models.generate_content(
-            model=FAST_MODEL_NAME,
-            contents=contents
-        )
-        return f"⏱️ [{now_str}]\n\n{response.text}"
-    except Exception as e:
-        return f"APIエラー: {str(e)}"
+    # フォールバック用のモデルリスト
+    model_candidates = ["gemini-1.5-flash", "gemini-1.5-pro"]
+    
+    for model_id in model_candidates:
+        try:
+            response = client.models.generate_content(
+                model=model_id,
+                contents=contents
+            )
+            return f"⏱️ [{now_str}]\n\n{response.text}"
+        except Exception as e:
+            last_error = str(e)
+            continue
+
+    return f"APIエラー: {last_error}"
 
 with gr.Blocks(title="Gemini AI チャットボット") as demo:
     gr.Markdown("# 🎙️🖼️ Gemini AI チャットボット (ap005w - 爆速仕様)")
