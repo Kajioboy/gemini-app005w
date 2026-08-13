@@ -12,7 +12,6 @@ import datetime
 import gradio as gr
 from PIL import Image
 
-# パッケージの読み込みチェック
 try:
     from google import genai
 except ImportError:
@@ -24,12 +23,12 @@ except ImportError:
     legacy_genai = None
 
 # アプリのバージョンとデータベース状態
-APP_VERSION = "v1.2.6"
+APP_VERSION = "v1.2.7"
 DB_STATUS = "Connected (SQLite)"
 START_TIME = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 # 環境変数からAPIキーを取得
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
 
 # APIクライアント初期化
 client = None
@@ -49,7 +48,7 @@ if GEMINI_API_KEY:
 SYSTEM_INFO_HTML = f"""
 <div style="background-color: #1e293b; color: #f8fafc; padding: 12px 16px; border-radius: 8px; font-size: 0.9em; margin-bottom: 15px; border: 1px solid #334155;">
     <div style="display: flex; flex-wrap: wrap; gap: 15px; align-items: center;">
-        <span>🤖 <b>使用モデル:</b> <code style="background:#0f172a; padding:2px 6px; border-radius:4px; color:#38bdf8;">Gemini 2.5 Flash / 1.5 Flash</code></span>
+        <span>🤖 <b>使用モデル:</b> <code style="background:#0f172a; padding:2px 6px; border-radius:4px; color:#38bdf8;">Gemini Auto-Detect</code></span>
         <span>🏷️ <b>Version:</b> <code style="background:#0f172a; padding:2px 6px; border-radius:4px; color:#a7f3d0;">{APP_VERSION}</code></span>
         <span>🗄️ <b>DB Status:</b> <code style="background:#0f172a; padding:2px 6px; border-radius:4px; color:#fde047;">{DB_STATUS}</code></span>
         <span>⏰ <b>Server Start:</b> <code style="background:#0f172a; padding:2px 6px; border-radius:4px; color:#cbd5e1;">{START_TIME}</code></span>
@@ -59,7 +58,7 @@ SYSTEM_INFO_HTML = f"""
 
 def respond(message, history):
     if not GEMINI_API_KEY:
-        return "❌ APIキーが設定されていません。\nRenderの [Environment] メニューで GEMINI_API_KEY が正しく設定されているか確認してください。"
+        return "❌ APIキーが設定されていません。\nRenderの Environment Variables で GEMINI_API_KEY を設定してください。"
 
     now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     text_input = message.get("text", "")
@@ -88,28 +87,32 @@ def respond(message, history):
     if not contents:
         return "メッセージ、画像、または音声を入力してください。"
 
-    # 新SDK(google-genai)での呼び出し試行
+    errors = []
+    models_to_try = ["gemini-2.5-flash", "gemini-1.5-flash", "gemini-2.0-flash"]
+
+    # 1. 新SDK (google-genai) で試行
     if client:
-        for model_id in ["gemini-2.5-flash", "gemini-1.5-flash"]:
+        for model_id in models_to_try:
             try:
                 res = client.models.generate_content(model=model_id, contents=contents)
                 if res and res.text:
                     return f"⏱️ [{now_str}] (Model: {model_id})\n\n{res.text}"
-            except Exception:
-                continue
+            except Exception as e:
+                errors.append(f"[genai / {model_id}]: {str(e)}")
 
-    # 旧SDK(google-generativeai)でのフォールバック試行
+    # 2. 旧SDK (google-generativeai) で試行
     if legacy_genai:
-        for model_id in ["gemini-1.5-flash", "gemini-1.5-pro"]:
+        for model_id in models_to_try:
             try:
                 m = legacy_genai.GenerativeModel(model_id)
                 res = m.generate_content(contents)
                 if res and res.text:
                     return f"⏱️ [{now_str}] (Model: {model_id})\n\n{res.text}"
-            except Exception:
-                continue
+            except Exception as e:
+                errors.append(f"[legacy / {model_id}]: {str(e)}")
 
-    return "⚠️ 応答の取得に失敗しました。GEMINI_API_KEY が有効か、Google AI Studio でキーを再発行して Render の Environment に設定し直してください。"
+    err_summary = "\n".join(errors[-2:]) if errors else "APIクライアントの初期化に失敗しています。"
+    return f"⚠️ 応答を取得できませんでした。\n\n【エラー詳細】\n{err_summary}"
 
 with gr.Blocks(title="Gemini AI チャットボット") as demo:
     gr.Markdown("# 🎙️🖼️ Gemini AI チャットボット (ap005w - 爆速仕様)")
