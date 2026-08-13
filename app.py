@@ -14,7 +14,7 @@ from google import genai
 from PIL import Image
 
 # アプリのバージョンとデータベース状態
-APP_VERSION = "v1.2.2"
+APP_VERSION = "v1.2.3"
 DB_STATUS = "Connected (SQLite)"
 START_TIME = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
@@ -22,14 +22,21 @@ START_TIME = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 client = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
 
-# 確実に利用可能なモデル名を指定
-FAST_MODEL_NAME = "gemini-1.5-flash"
+# 使用可能なモデルのリスト（新旧互換性対応）
+MODEL_CANDIDATES = [
+    "gemini-2.5-flash",
+    "gemini-2.0-flash",
+    "gemini-1.5-flash",
+    "models/gemini-1.5-flash"
+]
+
+FAST_MODEL_NAME = "gemini-2.5-flash"
 
 # タイトル下に表示するシステム情報ヘッダー
 SYSTEM_INFO_HTML = f"""
 <div style="background-color: #1e293b; color: #f8fafc; padding: 12px 16px; border-radius: 8px; font-size: 0.9em; margin-bottom: 15px; border: 1px solid #334155;">
     <div style="display: flex; flex-wrap: wrap; gap: 15px; align-items: center;">
-        <span>🤖 <b>使用モデル:</b> <code style="background:#0f172a; padding:2px 6px; border-radius:4px; color:#38bdf8;">{FAST_MODEL_NAME}</code></span>
+        <span>🤖 <b>使用モデル:</b> <code style="background:#0f172a; padding:2px 6px; border-radius:4px; color:#38bdf8;">Gemini (Auto-Select)</code></span>
         <span>🏷️ <b>Version:</b> <code style="background:#0f172a; padding:2px 6px; border-radius:4px; color:#a7f3d0;">{APP_VERSION}</code></span>
         <span>🗄️ <b>DB Status:</b> <code style="background:#0f172a; padding:2px 6px; border-radius:4px; color:#fde047;">{DB_STATUS}</code></span>
         <span>⏰ <b>Server Start:</b> <code style="background:#0f172a; padding:2px 6px; border-radius:4px; color:#cbd5e1;">{START_TIME}</code></span>
@@ -39,7 +46,7 @@ SYSTEM_INFO_HTML = f"""
 
 def respond(message, history):
     if not client:
-        return "APIキーが設定されていません。RenderのEnvironment VariablesでGEMINI_API_KEYを設定してください。"
+        return "APIキーが設定されていません。"
 
     now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     text_input = message.get("text", "")
@@ -53,7 +60,7 @@ def respond(message, history):
                 img = Image.open(file_path)
                 contents.append(img)
             except Exception:
-                # 画像以外（音声など）の場合はバイナリデータとして追加
+                # 画像以外（音声など）の場合
                 try:
                     with open(file_path, "rb") as f:
                         contents.append({"mime_type": "audio/mp3", "data": f.read()})
@@ -70,21 +77,20 @@ def respond(message, history):
     if not contents:
         return "メッセージ、画像、または音声を入力してください。"
 
-    # フォールバック用のモデルリスト
-    model_candidates = ["gemini-1.5-flash", "gemini-1.5-pro"]
-    
-    for model_id in model_candidates:
+    # 確実にレスポンスを返すために候補を順番に試す
+    last_error = ""
+    for model_id in MODEL_CANDIDATES:
         try:
             response = client.models.generate_content(
                 model=model_id,
                 contents=contents
             )
-            return f"⏱️ [{now_str}]\n\n{response.text}"
+            return f"⏱️ [{now_str}] (Model: {model_id})\n\n{response.text}"
         except Exception as e:
             last_error = str(e)
             continue
 
-    return f"APIエラー: {last_error}"
+    return f"APIエラー: 通信可能なモデルが見つかりませんでした。\n詳細: {last_error}"
 
 with gr.Blocks(title="Gemini AI チャットボット") as demo:
     gr.Markdown("# 🎙️🖼️ Gemini AI チャットボット (ap005w - 爆速仕様)")
