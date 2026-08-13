@@ -103,7 +103,7 @@ def respond(message, history):
     return f"⚠️ 応答の取得に失敗しました。（処理時間: {elapsed} 秒）\n\n【試行結果】\n" + "\n".join(errors[:3])
 
 with gr.Blocks(title="Gemini AI チャットボット") as demo:
-    gr.Markdown("# 🎙️🖼️ Gemini AI チャットボット (ap005w - 爆速仕様)")
+    gr.Markdown("# 🎙️🖼️ Kajio90 AI チャットボット (Gemini AI)")
     gr.HTML(SYSTEM_INFO_HTML)
     
     gr.ChatInterface(
