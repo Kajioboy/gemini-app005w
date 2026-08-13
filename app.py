@@ -14,7 +14,7 @@ from google import genai
 from PIL import Image
 
 # アプリのバージョンとデータベース状態
-APP_VERSION = "v1.2.8"
+APP_VERSION = "v1.2.9"
 DB_STATUS = "Connected (SQLite)"
 START_TIME = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
@@ -24,14 +24,11 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
 # 最新の google-genai クライアント初期化
 client = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
 
-# 使用モデル
-FAST_MODEL_NAME = "gemini-2.5-flash"
-
 # タイトル下に表示するシステム情報ヘッダー
 SYSTEM_INFO_HTML = f"""
 <div style="background-color: #1e293b; color: #f8fafc; padding: 12px 16px; border-radius: 8px; font-size: 0.9em; margin-bottom: 15px; border: 1px solid #334155;">
     <div style="display: flex; flex-wrap: wrap; gap: 15px; align-items: center;">
-        <span>🤖 <b>使用モデル:</b> <code style="background:#0f172a; padding:2px 6px; border-radius:4px; color:#38bdf8;">{FAST_MODEL_NAME}</code></span>
+        <span>🤖 <b>使用モデル:</b> <code style="background:#0f172a; padding:2px 6px; border-radius:4px; color:#38bdf8;">Auto-Select (有効モデル自動検出)</code></span>
         <span>🏷️ <b>Version:</b> <code style="background:#0f172a; padding:2px 6px; border-radius:4px; color:#a7f3d0;">{APP_VERSION}</code></span>
         <span>🗄️ <b>DB Status:</b> <code style="background:#0f172a; padding:2px 6px; border-radius:4px; color:#fde047;">{DB_STATUS}</code></span>
         <span>⏰ <b>Server Start:</b> <code style="background:#0f172a; padding:2px 6px; border-radius:4px; color:#cbd5e1;">{START_TIME}</code></span>
@@ -70,17 +67,40 @@ def respond(message, history):
     if not contents:
         return "メッセージ、画像、または音声を入力してください。"
 
+    # APIから利用可能なモデル一覧を自動取得
+    candidate_models = []
     try:
-        response = client.models.generate_content(
-            model=FAST_MODEL_NAME,
-            contents=contents
-        )
-        if response and response.text:
-            return f"⏱️ [{now_str}] (Model: {FAST_MODEL_NAME})\n\n{response.text}"
-        else:
-            return "⚠️ レスポンスの取得に失敗しました（応答文が空です）。"
-    except Exception as e:
-        return f"⚠️ APIエラーが発生しました:\n{str(e)}"
+        all_models = list(client.models.list())
+        for m in all_models:
+            m_id = m.name.replace("models/", "") if hasattr(m, "name") else str(m)
+            candidate_models.append(m_id)
+    except Exception:
+        pass
+
+    # 自動取得に失敗した場合のバックアップ候補一覧
+    if not candidate_models:
+        candidate_models = [
+            "gemini-2.5-flash",
+            "gemini-2.0-flash",
+            "gemini-1.5-flash",
+            "gemini-2.5-pro"
+        ]
+
+    errors = []
+    # 利用可能なモデルで成功するまで順番に送信試行
+    for model_id in candidate_models:
+        try:
+            response = client.models.generate_content(
+                model=model_id,
+                contents=contents
+            )
+            if response and response.text:
+                return f"⏱️ [{now_str}] (Model: {model_id})\n\n{response.text}"
+        except Exception as e:
+            errors.append(f"[{model_id}]: {str(e)}")
+            continue
+
+    return f"⚠️ 応答の取得に失敗しました。\n\n【試行結果】\n" + "\n".join(errors[:3])
 
 with gr.Blocks(title="Gemini AI チャットボット") as demo:
     gr.Markdown("# 🎙️🖼️ Gemini AI チャットボット (ap005w - 爆速仕様)")
