@@ -13,7 +13,7 @@ from google import genai
 from PIL import Image
 
 # アプリのバージョンとデータベース状態（固定値）
-APP_VERSION = "v1.2.0"
+APP_VERSION = "v1.2.1"
 DB_STATUS = "Connected (SQLite)"
 START_TIME = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
@@ -23,9 +23,9 @@ client = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
 
 def find_fast_gemini_model():
     if not client:
-        return 'gemini-2.5-flash'
+        return 'gemini-2.0-flash'
+    # 実在する利用可能なモデルのリスト
     candidates = [
-        'gemini-2.5-flash',
         'gemini-2.0-flash',
         'gemini-1.5-flash'
     ]
@@ -38,7 +38,7 @@ def find_fast_gemini_model():
             return model_name
         except Exception:
             continue
-    return 'gemini-2.5-flash'
+    return 'gemini-2.0-flash'
 
 FAST_MODEL_NAME = find_fast_gemini_model()
 
@@ -108,9 +108,8 @@ with gr.Blocks(title="Gemini AI チャットボット") as demo:
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 7860))
-    # 簡易ログイン（ユーザー名: admin / パスワード: password）
     demo.launch(
         server_name="0.0.0.0", 
         server_port=port,
-        auth=("admin", "password")
+        auth=("joekajio90", "Soejima/2874")
     )
